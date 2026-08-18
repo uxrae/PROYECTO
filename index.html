@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NexusHome</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+:root{--fondo:#052B42;--boton:#174056;--rojo:#FF2B2B;--blanco:#fff}
+*{margin:0;padding:0;box-sizing:border-box;font-family:Segoe UI,Arial,sans-serif;-webkit-tap-highlight-color:transparent;user-select:none}
+body{background:var(--fondo);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:18px}
+h1{color:var(--blanco);letter-spacing:3px;font-size:1.6rem}
+.status{display:flex;gap:8px;margin:14px 0}
+.chip{background:var(--boton);border-radius:20px;padding:6px 12px;display:flex;align-items:center;gap:7px;color:var(--blanco);font-size:.72rem;letter-spacing:1px}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--rojo)}
+.dot.ok{background:#2ecc71}
+#panel{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));width:100%;max-width:1500px}
+.cell{background:var(--boton);border:none;border-radius:12px;min-height:115px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;color:var(--blanco);cursor:pointer;padding:10px;transition:color .25s;position:relative}
+.cell:active{transform:scale(.97)}
+.cell svg{width:30px;height:30px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.cell span{font-size:.68rem;letter-spacing:1.2px;font-weight:bold;text-align:center}
+.cell.on{color:var(--rojo)}
+.cell.ind{cursor:default}
+.color-indicator{width:20px;height:20px;border-radius:50%;border:2px solid rgba(255,255,255,0.2);cursor:pointer;transition:transform .2s;position:absolute;top:8px;right:8px;opacity:0.5;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;color:#fff}
+.color-indicator:hover{transform:scale(1.2)}
+.color-indicator:active{transform:scale(0.9)}
+.cell.on .color-indicator{opacity:1;border-color:rgba(255,255,255,0.6)}
+#paletaFlotante{display:none;position:fixed;background:var(--boton);padding:6px 10px;border-radius:30px;gap:6px;align-items:center;justify-content:center;flex-wrap:nowrap;box-shadow:0 4px 20px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.15);z-index:1000;pointer-events:auto;backdrop-filter:blur(2px)}
+#paletaFlotante.visible{display:flex}
+#paletaFlotante .color-btn{width:24px;height:24px;border-radius:50%;border:2px solid rgba(255,255,255,0.3);cursor:pointer;transition:transform .15s;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;color:#fff}
+#paletaFlotante .color-btn:hover{transform:scale(1.15);border-color:#fff}
+#paletaFlotante .color-btn:active{transform:scale(0.9)}
+#paletaFlotante .color-btn.disco-btn{background:#333;border-color:#ff0;color:#ff0;font-size:14px}
+.motor{gap:6px}
+.motor svg{width:24px;height:24px}
+.motor .filaT{display:flex;align-items:center;gap:6px;justify-content:center}
+.motor label{font-size:.7rem;letter-spacing:1px;width:12px;text-align:right}
+.mini{width:26px;height:26px;background:var(--fondo);border:none;border-radius:7px;color:var(--blanco);font-size:.95rem;cursor:pointer}
+.mval{min-width:46px;text-align:center;font-size:.8rem;font-weight:bold}
+.evento{grid-column:span 3;background:var(--boton);border-left:4px solid var(--rojo);border-radius:12px;padding:12px;color:var(--blanco);font-size:.8rem;display:flex;align-items:center;min-height:115px}
+@media(max-width:600px){.evento{grid-column:1/-1}}
+</style>
+</head>
+<body>
+<h1>NEXUSHOME</h1>
+<div class="status">
+  <div class="chip"><div class="dot" id="dSen"></div>SEÑAL</div>
+  <div class="chip"><div class="dot" id="dNube"></div>NUBE</div>
+  <div class="chip"><div class="dot" id="dCasa"></div>CASA</div>
+</div>
+<div id="panel"></div>
+
+<!-- Paleta flotante -->
+<div id="paletaFlotante">
+  <div class="color-btn" style="background:#FF0000" data-color="#FF0000"></div>
+  <div class="color-btn" style="background:#00B050" data-color="#00B050"></div>
+  <div class="color-btn" style="background:#0000CC" data-color="#0000CC"></div>
+  <div class="color-btn" style="background:#FFFF00" data-color="#FFFF00"></div>
+  <div class="color-btn" style="background:#FFFFFF" data-color="#FFFFFF"></div>
+  <div class="color-btn" style="background:#FF9900" data-color="#FF9900"></div>
+  <div class="color-btn" style="background:#9900CC" data-color="#9900CC"></div>
+  <div class="color-btn disco-btn" data-disco="true">D</div>
+</div>
+
+<script>
+const firebaseConfig={apiKey:"AIzaSyATqPmfh0ZVZIrqwBL2XQmZfqEJULPK4",authDomain:"nexushome-idc.firebaseapp.com",databaseURL:"https://nexushome-idc-default-rtdb.firebaseio.com",projectId:"nexushome-idc",storageBucket:"nexushome-idc.firebasestorage.app",messagingSenderId:"588135617214",appId:"1:588135617214:web:6c494013b249487094a4eef"};
+firebase.initializeApp(firebaseConfig);
+const db=firebase.database(), base='nexushome';
+
+const ICONOS={
+frente:'<svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>',
+puerta:'<svg viewBox="0 0 24 24"><rect x="6" y="3" width="12" height="18" rx="1"/><circle cx="15" cy="12" r="1"/></svg>',
+fondo:'<svg viewBox="0 0 24 24"><path d="M12 3l4 6h-3l4 6H7l4-6H8z"/><line x1="12" y1="15" x2="12" y2="21"/></svg>',
+sala:'<svg viewBox="0 0 24 24"><path d="M5 10V7a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v3"/><path d="M3 12a2 2 0 0 1 4 0v2h10v-2a2 2 0 0 1 4 0v6H3z"/></svg>',
+bal_iz:'<svg viewBox="0 0 24 24"><line x1="4" y1="9" x2="20" y2="9"/><line x1="6" y1="9" x2="6" y2="17"/><line x1="12" y1="9" x2="12" y2="17"/><line x1="18" y1="9" x2="18" y2="17"/><line x1="4" y1="17" x2="20" y2="17"/></svg>',
+bal_dr:'<svg viewBox="0 0 24 24"><line x1="4" y1="9" x2="20" y2="9"/><line x1="6" y1="9" x2="6" y2="17"/><line x1="12" y1="9" x2="12" y2="17"/><line x1="18" y1="9" x2="18" y2="17"/><line x1="4" y1="17" x2="20" y2="17"/></svg>',
+dormitorio:'<svg viewBox="0 0 24 24"><path d="M3 19v-9h18v9"/><path d="M3 15h18"/><path d="M6 10V7h5v3"/></svg>',
+grada:'<svg viewBox="0 0 24 24"><path d="M4 20h4v-4h4v-4h4v-4h4"/></svg>',
+estar_iz:'<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="11" rx="1"/><line x1="12" y1="17" x2="12" y2="20"/><line x1="8" y1="20" x2="16" y2="20"/></svg>',
+estar_dr:'<svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="11" rx="1"/><line x1="12" y1="17" x2="12" y2="20"/><line x1="8" y1="20" x2="16" y2="20"/></svg>',
+ojo:'<svg viewBox="0 0 24 24"><circle cx="12" cy="9" r="4"/><path d="M10 13v3h4v-3"/></svg>',
+garaje:'<svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="1"/><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="13" x2="20" y2="13"/><line x1="4" y1="17" x2="20" y2="17"/></svg>',
+tende:'<svg viewBox="0 0 24 24"><path d="M12 6a2 2 0 1 0-2-2"/><path d="M12 6l9 6H3z"/></svg>',
+auto:'<svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-3-6.2"/><polyline points="20 3 20 7 16 7"/></svg>',
+lluvia:'<svg viewBox="0 0 24 24"><path d="M7 15a5 5 0 1 1 1-9.9A6 6 0 0 1 19.5 8.5 3.8 3.8 0 0 1 18 15.9H7z"/><line x1="8" y1="19" x2="8" y2="21"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="16" y1="19" x2="16" y2="21"/></svg>',
+luz:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><line x1="4.5" y1="4.5" x2="6.5" y2="6.5"/><line x1="17.5" y1="17.5" x2="19.5" y2="19.5"/><line x1="4.5" y1="19.5" x2="6.5" y2="17.5"/><line x1="17.5" y1="6.5" x2="19.5" y2="4.5"/></svg>',
+motor:'<svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="7"/><line x1="12" y1="13" x2="12" y2="9"/><line x1="9" y1="2" x2="15" y2="2"/></svg>',
+master:'<svg viewBox="0 0 24 24"><path d="M13 2L5 13h6l-1 9 8-11h-6z"/></svg>',
+reset:'<svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5"/><path d="M20 12a8 8 0 0 1-14 5"/><polyline points="18 3 18 7 14 7"/><polyline points="6 21 6 17 10 17"/></svg>'
+};
+
+const LUCES = {
+  frente:'FRENTE', puerta:'PUERTA', fondo:'FONDO', sala:'SALA',
+  bal_iz:'BAL IZQ', bal_dr:'BAL DRCH', dormitorio:'DORMITORIO', grada:'GRADA',
+  estar_iz:'ESTAR IZQ', estar_dr:'ESTAR DRCH',
+  ojo_a:'OJO A', ojo_b:'OJO B', ojo_c:'OJO C', ojo_d:'OJO D'
+};
+
+const COLORES_PREDEFINIDOS = [
+  '#FF0000', // Rojo
+  '#00B050', // Verde
+  '#0000CC', // Azul
+  '#FFFF00', // Amarillo
+  '#FFFFFF', // Blanco
+  '#FF9900', // Naranja
+  '#9900CC'  // Violeta
+];
+
+const estadoLuces = {};
+const colores = {};
+const modoDisco = {}; // true/false
+const panel = document.getElementById('panel');
+const paleta = document.getElementById('paletaFlotante');
+let targetKey = null;
+let discoSpeed = 500; // milisegundos, por defecto 0.5s
+
+// --- Control de velocidad del disco (botones + y -) ---
+function actualizarVelocidadDisplay() {
+  const el = document.getElementById('discoSpeedDisplay');
+  if (el) el.textContent = (discoSpeed / 1000).toFixed(1) + 's';
+}
+function ajustarVelocidad(delta) {
+  let nuevo = discoSpeed + delta * 100;
+  if (nuevo < 200) nuevo = 200;
+  if (nuevo > 2000) nuevo = 2000;
+  discoSpeed = Math.round(nuevo / 100) * 100; // redondear a 100ms
+  db.ref(base + '/config/disco_speed').set(discoSpeed);
+  actualizarVelocidadDisplay();
+}
+
+db.ref(base + '/config/disco_speed').on('value', snap => {
+  if (snap.val()) {
+    discoSpeed = snap.val();
+    actualizarVelocidadDisplay();
+  }
+});
+
+// --- Paleta flotante ---
+document.querySelectorAll('#paletaFlotante .color-btn').forEach(btn => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (!targetKey) return;
+    const isDisco = btn.dataset.disco === 'true';
+    if (isDisco) {
+      // Activar modo disco
+      db.ref(base + '/modos/disco/' + targetKey).set(true);
+      // El color no cambia, solo se activa el modo
+    } else {
+      // Desactivar modo disco y establecer color
+      db.ref(base + '/modos/disco/' + targetKey).set(false);
+      const color = btn.dataset.color;
+      db.ref(base + '/colores/' + targetKey).set(color);
+    }
+    paleta.classList.remove('visible');
+    targetKey = null;
+  });
+});
+
+document.addEventListener('click', (e) => {
+  if (!paleta.contains(e.target) && !e.target.classList.contains('color-indicator')) {
+    paleta.classList.remove('visible');
+    targetKey = null;
+  }
+});
+
+// --- Animación del modo disco (rotación de colores en el indicador) ---
+function iniciarAnimacionDisco(key) {
+  const el = document.querySelector(`.cell[data-key="${key}"] .color-indicator`);
+  if (!el) return;
+  // Limpiar intervalo anterior si existe
+  if (el._interval) clearInterval(el._interval);
+  let idx = 0;
+  el._interval = setInterval(() => {
+    if (!modoDisco[key]) {
+      clearInterval(el._interval);
+      el._interval = null;
+      return;
+    }
+    // Rotar colores en el indicador
+    const color = COLORES_PREDEFINIDOS[idx % COLORES_PREDEFINIDOS.length];
+    el.style.backgroundColor = color;
+    idx++;
+  }, discoSpeed);
+}
+
+// --- Crear celdas para cada foco ---
+function celdaConColor(icono, texto, key, clickable) {
+  const el = document.createElement(clickable ? 'button' : 'div');
+  el.className = 'cell' + (clickable ? '' : ' ind');
+  el.setAttribute('data-key', key);
+  el.innerHTML = icono + '<span>' + texto + '</span>';
+  
+  const indicator = document.createElement('div');
+  indicator.className = 'color-indicator';
+  indicator.style.backgroundColor = '#444';
+  indicator.textContent = '';
+  el.appendChild(indicator);
+  
+  indicator.addEventListener('click', (e) => {
+    e.stopPropagation();
+    targetKey = key;
+    const rect = indicator.getBoundingClientRect();
+    const paletaWidth = 200;
+    let left = rect.left + rect.width/2 - paletaWidth/2;
+    let top = rect.top - 45;
+    if (left < 10) left = 10;
+    if (left + paletaWidth > window.innerWidth - 10) left = window.innerWidth - paletaWidth - 10;
+    if (top < 10) top = rect.bottom + 10;
+    paleta.style.left = left + 'px';
+    paleta.style.top = top + 'px';
+    paleta.classList.add('visible');
+  });
+  
+  el.addEventListener('click', (e) => {
+    if (e.target.classList.contains('color-indicator')) return;
+    db.ref(base + '/estados/luces/' + key).set(!estadoLuces[key]);
+  });
+  
+  panel.appendChild(el);
+  return el;
+}
+
+// Inicializar nodos en Firebase
+function initNodes() {
+  Object.keys(LUCES).forEach(k => {
+    db.ref(base + '/estados/luces/' + k).once('value').then(s => {
+      if (s.val() === null) db.ref(base + '/estados/luces/' + k).set(false);
+    });
+    db.ref(base + '/colores/' + k).once('value').then(s => {
+      if (s.val() === null) db.ref(base + '/colores/' + k).set('#FFFFFF');
+    });
+    db.ref(base + '/modos/disco/' + k).once('value').then(s => {
+      if (s.val() === null) db.ref(base + '/modos/disco/' + k).set(false);
+    });
+  });
+}
+initNodes();
+
+Object.keys(LUCES).forEach(k => {
+  const ic = (k.indexOf('ojo_') === 0) ? 'ojo' : k;
+  const el = celdaConColor(ICONOS[ic], LUCES[k], k, true);
+  
+  // Estado ON/OFF
+  db.ref(base + '/estados/luces/' + k).on('value', s => {
+    estadoLuces[k] = !!s.val();
+    el.classList.toggle('on', estadoLuces[k]);
+    const indicator = el.querySelector('.color-indicator');
+    if (!estadoLuces[k]) {
+      // Apagado: indicador gris
+      indicator.style.backgroundColor = '#444';
+      indicator.textContent = '';
+      if (indicator._interval) {
+        clearInterval(indicator._interval);
+        indicator._interval = null;
+      }
+    } else {
+      // Encendido: actualizar según modo disco o color fijo
+      if (modoDisco[k]) {
+        indicator.textContent = 'D';
+        indicator.style.backgroundColor = '#333';
+        if (!indicator._interval) iniciarAnimacionDisco(k);
+      } else {
+        indicator.textContent = '';
+        indicator.style.backgroundColor = colores[k] || '#FFFFFF';
+      }
+    }
+  });
+  
+  // Color fijo
+  db.ref(base + '/colores/' + k).on('value', s => {
+    const color = s.val() || '#FFFFFF';
+    colores[k] = color;
+    const indicator = el.querySelector('.color-indicator');
+    if (estadoLuces[k] && !modoDisco[k]) {
+      indicator.style.backgroundColor = color;
+      indicator.textContent = '';
+      if (indicator._interval) {
+        clearInterval(indicator._interval);
+        indicator._interval = null;
+      }
+    }
+  });
+  
+  // Modo disco
+  db.ref(base + '/modos/disco/' + k).on('value', s => {
+    const isDisco = !!s.val();
+    modoDisco[k] = isDisco;
+    const indicator = el.querySelector('.color-indicator');
+    if (estadoLuces[k]) {
+      if (isDisco) {
+        indicator.textContent = 'D';
+        indicator.style.backgroundColor = '#333';
+        if (!indicator._interval) iniciarAnimacionDisco(k);
+      } else {
+        indicator.textContent = '';
+        indicator.style.backgroundColor = colores[k] || '#FFFFFF';
+        if (indicator._interval) {
+          clearInterval(indicator._interval);
+          indicator._interval = null;
+        }
+      }
+    }
+  });
+});
+
+// --- Elementos adicionales (garaje, tendedero, etc.) ---
+function celda(icono, texto, clickable) {
+  const el = document.createElement(clickable ? 'button' : 'div');
+  el.className = 'cell' + (clickable ? '' : ' ind');
+  el.innerHTML = icono + '<span>' + texto + '</span>';
+  panel.appendChild(el);
+  return el;
+}
+
+// Garaje
+const elGar = celda(ICONOS.garaje,'GARAJE',true);
+let garajeEstado=false;
+elGar.onclick=()=>db.ref(base+'/estados/garaje').set(!garajeEstado);
+db.ref(base+'/estados/garaje').on('value',s=>{garajeEstado=!!s.val();elGar.classList.toggle('on',!!s.val());});
+
+// Tendedero
+const elTen = celda(ICONOS.tende,'TENDEDERO',true);
+let tendeEstado=false;
+elTen.onclick=()=>db.ref(base+'/estados/tende').set(!tendeEstado);
+db.ref(base+'/estados/tende').on('value',s=>{tendeEstado=!!s.val();elTen.classList.toggle('on',!!s.val());});
+
+// Modo Auto
+const elAuto = celda(ICONOS.auto,'MODO AUTO',true);
+let autoEstado=false;
+elAuto.onclick=()=>db.ref(base+'/modos/tendedero_automatico').set(!autoEstado);
+db.ref(base+'/modos/tendedero_automatico').on('value',s=>{autoEstado=!!s.val();elAuto.classList.toggle('on',!!s.val());});
+
+// Lluvia
+const elLlu = celda(ICONOS.lluvia,'LLUVIA',false);
+db.ref(base+'/sensores/lluvia/activo').on('value',s=>{elLlu.classList.toggle('on',!!s.val());});
+
+// Luz (sensor)
+const elLuz = celda(ICONOS.luz,'--',false);
+db.ref(base+'/sensores/luz/nivel').on('value',s=>{elLuz.querySelector('span').textContent=(s.val()!=null)?s.val():'--';});
+
+// Motor (tiempos E y S)
+let tExt=2300,tRec=2300;
+const elMot=document.createElement('div');
+elMot.className='cell ind motor';
+elMot.innerHTML=ICONOS.motor+
+ '<div class="filaT"><label>E</label><button class="mini" id="mEn-">−</button><div class="mval" id="vRec">–</div><button class="mini" id="mEn+">+</button></div>'+
+ '<div class="filaT"><label>S</label><button class="mini" id="mSa-">−</button><div class="mval" id="vExt">–</div><button class="mini" id="mSa+">+</button></div>';
+panel.appendChild(elMot);
+function pintaT(){document.getElementById('vExt').textContent=(tExt/1000).toFixed(1)+' s';document.getElementById('vRec').textContent=(tRec/1000).toFixed(1)+' s';}
+db.ref(base+'/config/tExt').on('value',s=>{if(s.val())tExt=s.val();pintaT();});
+db.ref(base+'/config/tRec').on('value',s=>{if(s.val())tRec=s.val();pintaT();});
+function aj(k,d){const cur=(k=='tExt')?tExt:tRec;const v=Math.min(10000,Math.max(500,cur+d*1000));if(k=='tExt')tExt=v;else tRec=v;db.ref(base+'/config/'+k).set(Math.round(v));pintaT();}
+document.getElementById('mEn-').onclick=()=>aj('tRec',-0.1);
+document.getElementById('mEn+').onclick=()=>aj('tRec',0.1);
+document.getElementById('mSa-').onclick=()=>aj('tExt',-0.1);
+document.getElementById('mSa+').onclick=()=>aj('tExt',0.1);
+
+// Control de velocidad del disco
+const elDiscoSpeed=document.createElement('div');
+elDiscoSpeed.className='cell ind motor';
+elDiscoSpeed.innerHTML=ICONOS.motor+
+ '<div class="filaT"><label>D</label><button class="mini" id="ds-">−</button><div class="mval" id="discoSpeedDisplay">0.5s</div><button class="mini" id="ds+">+</button></div>';
+panel.appendChild(elDiscoSpeed);
+document.getElementById('ds-').onclick=()=>ajustarVelocidad(-1);
+document.getElementById('ds+').onclick=()=>ajustarVelocidad(1);
+actualizarVelocidadDisplay();
+
+// Evento
+const elEv=document.createElement('div');
+elEv.className='evento';
+elEv.innerHTML='📋 Último evento: <span id="eventoTxt">--</span>';
+panel.appendChild(elEv);
+db.ref(base+'/eventos/ultimo_evento').on('value',s=>{const e=s.val()||{};document.getElementById('eventoTxt').textContent=(e.texto||'--')+(e.hora?' — '+e.hora:'');});
+
+// Casa ON
+const elMas=celda(ICONOS.master,'CASA ON',true);
+elMas.onclick=()=>{const upd={};Object.keys(LUCES).forEach(k=>{upd['estados/luces/'+k]=true;});upd['estados/garaje']=true;upd['estados/tende']=true;db.ref(base).update(upd);};
+
+// Reiniciar
+const elRes=celda(ICONOS.reset,'REINICIAR',true);
+elRes.onclick=()=>{
+  if(!confirm('¿Reiniciar la demo al estado inicial?')) return;
+  const f=new Date(), upd={};
+  Object.keys(LUCES).forEach(k=>{
+    upd['estados/luces/'+k] = false;
+    upd['colores/'+k] = '#FFFFFF';
+    upd['modos/disco/'+k] = false;
+  });
+  upd['estados/garaje']=false;
+  upd['estados/tende']=false;
+  upd['modos/tendedero_automatico']=true;
+  upd['modos/luces_automaticas']=false;
+  upd['eventos/ultimo_evento/texto']='Sistema iniciado';
+  upd['eventos/ultimo_evento/fecha']=f.toLocaleDateString('es-EC');
+  upd['eventos/ultimo_evento/hora']=f.toLocaleTimeString('es-EC',{hour:'2-digit',minute:'2-digit'});
+  upd['eventos/contador']=0;
+  upd['sistema/esp32_conectado']=false;
+  db.ref(base).update(upd);
+};
+
+// Chips de estado
+function pintaSen(){document.getElementById('dSen').className='dot'+(navigator.onLine?' ok':'');}
+window.addEventListener('online',pintaSen);
+window.addEventListener('offline',pintaSen);
+pintaSen();
+db.ref('.info/connected').on('value',s=>{document.getElementById('dNube').className='dot'+(s.val()?' ok':'');});
+db.ref(base+'/sistema/esp32_conectado').on('value',s=>{document.getElementById('dCasa').className='dot'+(s.val()?' ok':'');});
+</script>
+</body>
+</html>
